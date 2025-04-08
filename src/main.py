@@ -224,7 +224,8 @@ def run(img):
     frame_lab = cv2.cvtColor(frame_gb, cv2.COLOR_BGR2LAB)
     
     area_max = 0
-    areaMaxContour = 0 for i in lab_data:
+    areaMaxContour = 0
+    for i in lab_data:
         if i in __target_color:
             detect_color = i
             frame_mask = cv2.inRange(frame_lab,
