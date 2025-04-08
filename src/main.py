@@ -167,6 +167,11 @@ def processInfo(frameInfo, img):
                 Board.setPWMServoPulse(2, x_dis, 0.001)
                 time.sleep(0.001)
 
+                if x_dis == 500:
+                    move = 'turn_left'
+                else:
+                    move = ''
+
     # Moving Toward the plant
     elif mode == 1:
         # We sort of assume that the camera can still see the plant at this point
@@ -249,7 +254,7 @@ def run(img):
         centerX = int(Misc.map(centerX, 0, size[0], 0, img_w))
         centerY = int(Misc.map(centerY, 0, size[1], 0, img_h))
         radius = int(Misc.map(radius, 0, size[0], 0, img_w))
-        cv2.circle(img, (int(centerX), int(centerY)), int(radius), range_rgb[detect_color], 2)
+        # cv2.circle(img, (int(centerX), int(centerY)), int(radius), range_rgb[detect_color], 2)
         
         # Moves the camera to the next position
         if abs(centerX - img_w/2) > 15:
