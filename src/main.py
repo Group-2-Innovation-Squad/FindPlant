@@ -1,3 +1,4 @@
+import requests
 import sys
 import cv2
 import math
@@ -124,11 +125,15 @@ def moveThread():
             if (bufferCount < 0):
                 bufferCount -= 1
 
-checkingRight = True
+checkingRight = False
 timeWait = 0
 
 def processInfo(frameInfo, img):
     global x_dis, y_dis, move, mode, checkingRight, timeWait
+    # print(frameInfo)
+    if len(frameInfo) == 0:
+        return
+
     # Is looking around for the plant
     if mode == 0:
         if frameInfo[0]:
@@ -145,35 +150,36 @@ def processInfo(frameInfo, img):
             Board.setPWMServoPulse(2, x_dis, frameInfo[4]*1000)
             time.sleep(frameInfo[4])
 
-            if x_dis > 1400:
-                move = 'turn_left'
-            elif x_dis < 1600:
+            if x_dis < 1200:
                 move = 'turn_right'
+            elif x_dis > 1800:
+                move = 'turn_left'
             else:
                 move = ''
                 mode = 1
         else:
             if checkingRight:
-                x_dis += 20
-                x_dis = 2500 if x_dis > 2500 else x_dis
-                Board.setPWMServoPulse(2, x_dis, 0.001)
-                time.sleep(0.001)
-
-                if x_dis == 2500:
-                    checkingRight = False
-            else:
                 x_dis -= 20
                 x_dis = 500 if x_dis < 500 else x_dis
                 Board.setPWMServoPulse(2, x_dis, 0.001)
                 time.sleep(0.001)
 
                 if x_dis == 500:
-                    move = 'turn_left'
+                    move = 'turn_right'
                 else:
                     move = ''
+            else:
+                x_dis += 20
+                x_dis = 2500 if x_dis > 2500 else x_dis
+                Board.setPWMServoPulse(2, x_dis, 0.001)
+                time.sleep(0.001)
+
+                if x_dis == 2500:
+                    checkingRight = True
 
     # Moving Toward the plant
     elif mode == 1:
+        print(frameInfo)
         # We sort of assume that the camera can still see the plant at this point
         y_dis += frameInfo[3]
         y_dis = 1000 if y_dis < 1000 else y_dis
@@ -187,23 +193,45 @@ def processInfo(frameInfo, img):
         Board.setPWMServoPulse(2, x_dis, frameInfo[4]*1000)
         time.sleep(frameInfo[4])
 
-        if x_dis > 1400:
-            move = 'turn_left'
-        elif x_dis < 1600:
+        if x_dis < 1200:
             move = 'turn_right'
+        elif x_dis > 1800:
+            move = 'turn_left'
         else:
             move = 'go_forward'
 
-        if frameInfo[1] > 100:
+        if frameInfo[1] > 10000:
             mode = 2
-            timeWait = 500
+            move = ''
+            timeWait = 50
 
     # Taking a picture of the plant
     elif mode == 2:
         if timeWait > 0:
+            y_dis += frameInfo[3]
+            y_dis = 1000 if y_dis < 1000 else y_dis
+            y_dis = 2000 if y_dis > 2000 else y_dis    
+
+            x_dis += frameInfo[2]
+            x_dis = 500 if x_dis < 500 else x_dis          
+            x_dis = 2500 if x_dis > 2500 else x_dis
+
+            Board.setPWMServoPulse(1, y_dis, frameInfo[4]*1000)
+            Board.setPWMServoPulse(2, x_dis, frameInfo[4]*1000)
+            time.sleep(frameInfo[4])
             timeWait -= 1
         else:
-            cv2.imwrite('plant.jpg', img)
+            print("Sending Pics")
+            file_path = 'plant.jpg'
+            cv2.imwrite(file_path, img)
+
+            url = 'http://172.20.10.10:8080/upload'
+            with open(file_path, 'rb') as file:
+                files = {'file': (file_path, file)}
+                response = requests.post(url, files=files)
+
+            print(response.status_code)
+            print(response.json())
             mode = -1
 
 # Gets the image and analysis all the colors and color groups available
@@ -213,8 +241,12 @@ def run(img):
     img_copy = img.copy()
     img_h, img_w = img.shape[:2]
     
-    if not __isRunning or __target_color == ():
-        return img
+    # if not __isRunning or __target_color == ():
+    if not __isRunning:
+        print(__isRunning)
+        print(__target_color)
+        print('here')
+        return ()
 
     cv2.line(img, (int(img_w/2 - 10), int(img_h/2)), (int(img_w/2 + 10), int(img_h/2)), (0, 255, 255), 2)
     cv2.line(img, (int(img_w/2), int(img_h/2 - 10)), (int(img_w/2), int(img_h/2 + 10)), (0, 255, 255), 2)
@@ -226,7 +258,7 @@ def run(img):
     area_max = 0
     areaMaxContour = 0
     for i in lab_data:
-        if i in __target_color:
+        if i in ('green'):
             detect_color = i
             frame_mask = cv2.inRange(frame_lab,
                                          (lab_data[i]['min'][0],
@@ -255,7 +287,7 @@ def run(img):
         centerX = int(Misc.map(centerX, 0, size[0], 0, img_w))
         centerY = int(Misc.map(centerY, 0, size[1], 0, img_h))
         radius = int(Misc.map(radius, 0, size[0], 0, img_w))
-        # cv2.circle(img, (int(centerX), int(centerY)), int(radius), range_rgb[detect_color], 2)
+        cv2.circle(img, (int(centerX), int(centerY)), int(radius), range_rgb[detect_color], 2)
         
         # Moves the camera to the next position
         if abs(centerX - img_w/2) > 15:
@@ -282,14 +314,13 @@ def run(img):
         # y_dis = 1000 if y_dis < 1000 else y_dis
         # y_dis = 2000 if y_dis > 2000 else y_dis    
         
-        if not debug:
             # Board.setPWMServoPulse(1, y_dis, use_time*1000)
             # Board.setPWMServoPulse(2, x_dis, use_time*1000)
             # time.sleep(use_time)
             
     # Returns true if the color is present and suggested movement to for the
     # camera to center on the green object
-    return (colorPresent, area_max, dx, dy, use_time, centerX, centerY)
+    return (colorPresent, area_max, dx, dy, use_time, img)
 
 def main():
     # This is a hard coded path that I need to get
@@ -318,6 +349,9 @@ def main():
         my_camera.camera_open()        
     AGC.runActionGroup('stand')
 
+    t1 = threading.Thread(target=moveThread)
+    t1.start()
+
     # Loop for Video
     while True:
         ret, img = my_camera.read()
@@ -326,13 +360,14 @@ def main():
             frame = cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
             nextMovement = run(frame)           
             processInfo(nextMovement, frame)
-            cv2.imshow('Frame', frame)
+            cv2.imshow('Frame', nextMovement[5])
             key = cv2.waitKey(1)
             # This is the q key
             if key == 27:
                 break
         else:
             time.sleep(0.01)
+    t1.join()
     my_camera.camera_close()
     cv2.destroyAllWindows()
 
